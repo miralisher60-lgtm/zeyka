@@ -1,0 +1,455 @@
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Змейка</title>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    padding: 20px 12px;
+    background: #101827;
+    color: white;
+    font-family: Arial, sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.game {
+    width: 100%;
+    max-width: 480px;
+    text-align: center;
+}
+
+h1 {
+    color: #4ade80;
+    margin: 0 0 15px;
+    font-size: 38px;
+}
+
+.info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.score {
+    font-size: 20px;
+    font-weight: bold;
+    color: #facc15;
+}
+
+select, button {
+    border: none;
+    border-radius: 10px;
+    padding: 12px;
+    font-size: 16px;
+}
+
+select {
+    background: #263449;
+    color: white;
+    max-width: 190px;
+}
+
+canvas {
+    width: 100%;
+    aspect-ratio: 1;
+    display: block;
+    background: #080f19;
+    border: 3px solid #334155;
+    border-radius: 12px;
+    touch-action: none;
+}
+
+#message {
+    min-height: 26px;
+    margin: 12px 0;
+    color: #cbd5e1;
+}
+
+.main-buttons {
+    display: flex;
+    gap: 10px;
+}
+
+.main-buttons button {
+    flex: 1;
+    font-weight: bold;
+    background: #22c55e;
+    color: #07130a;
+    cursor: pointer;
+}
+
+.main-buttons button:last-child {
+    background: #334155;
+    color: white;
+}
+
+.controls {
+    width: 190px;
+    margin: 20px auto 0;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+}
+
+.controls button {
+    height: 58px;
+    font-size: 25px;
+    background: #263449;
+    color: white;
+    cursor: pointer;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.controls button:active {
+    background: #22c55e;
+    color: #07130a;
+}
+
+.empty {
+    visibility: hidden;
+}
+
+.hint {
+    color: #94a3b8;
+    font-size: 13px;
+    line-height: 1.5;
+    margin-top: 18px;
+}
+</style>
+</head>
+
+<body>
+<div class="game">
+    <h1>🐍 Змейка</h1>
+
+    <div class="info">
+        <div class="score">Счёт: <span id="score">0</span></div>
+
+        <select id="level" aria-label="Уровень сложности">
+            <option value="180">Лёгкий уровень</option>
+            <option value="120" selected>Средний уровень</option>
+            <option value="70">Сложный уровень</option>
+        </select>
+    </div>
+
+    <canvas id="board" width="400" height="400"></canvas>
+
+    <div id="message">Нажми «Начать игру»!</div>
+
+    <div class="main-buttons">
+        <button id="start">▶ Начать игру</button>
+        <button id="restart">↻ Заново</button>
+    </div>
+
+    <div class="controls">
+        <button class="empty" tabindex="-1"> </button>
+        <button data-dir="up" aria-label="Вверх">⬆️</button>
+        <button class="empty" tabindex="-1"> </button>
+
+        <button data-dir="left" aria-label="Влево">⬅️</button>
+        <button data-dir="down" aria-label="Вниз">⬇️</button>
+        <button data-dir="right" aria-label="Вправо">➡️</button>
+    </div>
+
+    <p class="hint">
+        Компьютер: W A S D или стрелки.<br>
+        Телефон: нажимай кнопки со стрелками.<br>
+        Собирай красную еду и не врезайся в стены!
+    </p>
+</div>
+
+<script>
+const canvas = document.getElementById("board");
+const ctx = canvas.getContext("2d");
+const scoreElement = document.getElementById("score");
+const message = document.getElementById("message");
+const level = document.getElementById("level");
+const startButton = document.getElementById("start");
+
+const CELL = 20;
+const SIZE = canvas.width / CELL;
+
+let snake;
+let food;
+let direction;
+let nextDirection;
+let score;
+let timer = null;
+let running = false;
+let gameOver = false;
+
+function randomFood() {
+    let position;
+
+    do {
+        position = {
+            x: Math.floor(Math.random() * SIZE),
+            y: Math.floor(Math.random() * SIZE)
+        };
+    } while (snake.some(part =>
+        part.x === position.x && part.y === position.y
+    ));
+
+    return position;
+}
+
+function resetGame() {
+    clearInterval(timer);
+    timer = null;
+
+    snake = [
+        {x: 10, y: 10},
+        {x: 9, y: 10},
+        {x: 8, y: 10}
+    ];
+
+    direction = "right";
+    nextDirection = "right";
+    score = 0;
+    food = randomFood();
+    running = false;
+    gameOver = false;
+
+    scoreElement.textContent = score;
+    message.textContent = "Нажми «Начать игру»!";
+    startButton.textContent = "▶ Начать игру";
+
+    draw();
+}
+
+function startGame() {
+    if (running) return;
+
+    if (gameOver) {
+        resetGame();
+    }
+
+    running = true;
+    gameOver = false;
+    startButton.textContent = "⏸ Игра идёт";
+    message.textContent = "Удачи! Собери еду.";
+
+    timer = setInterval(tick, Number(level.value));
+}
+
+function changeDirection(newDirection) {
+    const opposites = {
+        up: "down",
+        down: "up",
+        left: "right",
+        right: "left"
+    };
+
+    if (newDirection === opposites[direction]) return;
+
+    nextDirection = newDirection;
+
+    // Можно заранее нажать направление перед следующим ходом.
+}
+
+function tick() {
+    direction = nextDirection;
+
+    const head = {...snake[0]};
+
+    if (direction === "up") head.y--;
+    if (direction === "down") head.y++;
+    if (direction === "left") head.x--;
+    if (direction === "right") head.x++;
+
+    // Проверяем столкновение со стенами.
+    if (
+        head.x < 0 || head.x >= SIZE ||
+        head.y < 0 || head.y >= SIZE
+    ) {
+        endGame();
+        return;
+    }
+
+    const eating =
+        head.x === food.x && head.y === food.y;
+
+    // Если еда не съедена, хвост переместится.
+    const bodyToCheck = eating ? snake : snake.slice(0, -1);
+
+    if (bodyToCheck.some(part =>
+        part.x === head.x && part.y === head.y
+    )) {
+        endGame();
+        return;
+    }
+
+    snake.unshift(head);
+
+    if (eating) {
+        score += 1;
+        scoreElement.textContent = score;
+        food = randomFood();
+    } else {
+        snake.pop();
+    }
+
+    draw();
+}
+
+function endGame() {
+    clearInterval(timer);
+    timer = null;
+    running = false;
+    gameOver = true;
+
+    message.textContent = "Игра окончена! Твой счёт: " + score;
+    startButton.textContent = "▶ Играть снова";
+    draw();
+}
+
+function draw() {
+    ctx.fillStyle = "#080f19";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Сетка игрового поля.
+    ctx.strokeStyle = "#142235";
+    ctx.lineWidth = 1;
+
+    for (let i = 0; i <= SIZE; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * CELL, 0);
+        ctx.lineTo(i * CELL, canvas.height);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(0, i * CELL);
+        ctx.lineTo(canvas.width, i * CELL);
+        ctx.stroke();
+    }
+
+    // Еда.
+    ctx.fillStyle = "#ef4444";
+    ctx.beginPath();
+    ctx.arc(
+        food.x * CELL + CELL / 2,
+        food.y * CELL + CELL / 2,
+        CELL / 2 - 2,
+        0,
+        Math.PI * 2
+    );
+    ctx.fill();
+
+    // Змейка.
+    snake.forEach((part, index) => {
+        ctx.fillStyle = index === 0 ? "#86efac" : "#22c55e";
+
+        ctx.fillRect(
+            part.x * CELL + 1,
+            part.y * CELL + 1,
+            CELL - 2,
+            CELL - 2
+        );
+
+        // Глаза головы.
+        if (index === 0) {
+            ctx.fillStyle = "#052e16";
+
+            let eyes;
+
+            if (direction === "right") {
+                eyes = [[13, 5], [13, 13]];
+            } else if (direction === "left") {
+                eyes = [[5, 5], [5, 13]];
+            } else if (direction === "up") {
+                eyes = [[5, 5], [13, 5]];
+            } else {
+                eyes = [[5, 13], [13, 13]];
+            }
+
+            eyes.forEach(([x, y]) => {
+                ctx.fillRect(
+                    part.x * CELL + x,
+                    part.y * CELL + y,
+                    3,
+                    3
+                );
+            });
+        }
+    });
+}
+
+// Клавиатура: WASD и стрелки.
+document.addEventListener("keydown", event => {
+    const key = event.key.toLowerCase();
+
+    const keys = {
+        w: "up",
+        arrowup: "up",
+        s: "down",
+        arrowdown: "down",
+        a: "left",
+        arrowleft: "left",
+        d: "right",
+        arrowright: "right"
+    };
+
+    if (keys[key]) {
+        event.preventDefault();
+
+        if (!running && !gameOver) {
+            startGame();
+        }
+
+        changeDirection(keys[key]);
+    }
+
+    if (event.code === "Space") {
+        event.preventDefault();
+
+        if (!running) startGame();
+    }
+});
+
+// Кнопки для телефона.
+document.querySelectorAll("[data-dir]").forEach(button => {
+    button.addEventListener("pointerdown", event => {
+        event.preventDefault();
+
+        if (!running && !gameOver) {
+            startGame();
+        }
+
+        changeDirection(button.dataset.dir);
+    });
+});
+
+startButton.addEventListener("click", startGame);
+
+document.getElementById("restart").addEventListener(
+    "click",
+    resetGame
+);
+
+// Смена уровня сразу меняет скорость текущей игры.
+level.addEventListener("change", () => {
+    if (running) {
+        clearInterval(timer);
+        timer = setInterval(tick, Number(level.value));
+    }
+});
+
+resetGame();
+</script>
+</body>
+</html>
